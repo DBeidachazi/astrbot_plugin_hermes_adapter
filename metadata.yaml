@@ -1,5 +1,5 @@
 name: astrbot_plugin_gateway_universal
 author: 4869-yinxu
-desc: 通用网关桥接：配置 gateway_backend 为 hermes 或 openclaw，自带运行时，不依赖 hermes_bridge / clawdbot_bridge 插件目录
+desc: Hermes 网关桥接：使用 /h 单命令，支持 profile 与按用户隔离会话
 version: 1.0.0
 repo: https://github.com/4869-yinxu/astrbot_plugin_clawdbot_bridge

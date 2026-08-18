@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """
-通用网关桥接插件：通过配置 ``gateway_backend`` 选择 hermes 或 openclaw 行为；
-内置 ``_bridge_runtime``（OpenClaw 桥运行时）与 ``_gateway_lib``（L1 合并、``/v1/responses`` 客户端），
-不依赖 ``astrbot_plugin_hermes_bridge`` / ``astrbot_plugin_clawdbot_bridge`` 目录。
+Hermes 网关桥接插件；
+内置 ``_bridge_runtime``（会话工具）与 ``_gateway_lib``（L1 合并、``/v1/responses`` 客户端），
+不依赖其他桥接插件目录。
 L1 统一配置见 ``data/config/gateway_bridges.json``，``active_profile_by_plugin`` 建议使用键 ``gateway_universal``。
-Hermes / OpenClaw 独立插件若仍启用，其 L1 合并与 HTTP 客户端亦从本目录 ``_gateway_lib`` 引用，请一并部署本插件目录。
+L1 统一配置见 ``data/config/gateway_bridges.json``。
 """
 
 from __future__ import annotations
@@ -15,9 +15,6 @@ import os
 from pathlib import Path
 import sys
 from typing import Any
-from urllib.error import URLError
-from urllib.parse import urlparse, urlunparse
-from urllib.request import Request, urlopen
 
 import astrbot.api.star as _astrbot_star
 from astrbot.api import logger
@@ -94,60 +91,8 @@ def _set_cfg(cfg: dict[str, Any], key: str, value: Any) -> None:
         cfg[key] = value
 
 
-def _is_url_reachable(base_url: str, timeout: float = 1.5) -> bool:
-    checks = ["/health", "/"]
-    normalized = base_url.rstrip("/")
-    for path in checks:
-        try:
-            req = Request(f"{normalized}{path}", method="GET")
-            with urlopen(req, timeout=timeout) as resp:  # nosec: B310
-                if 200 <= int(getattr(resp, "status", 0)) < 500:
-                    return True
-        except (URLError, TimeoutError, ValueError):
-            continue
-    return False
-
-
-def _with_port(url: str, port: int) -> str:
-    parsed = urlparse(url)
-    host = parsed.hostname
-    if not host:
-        return url
-    netloc = f"{host}:{port}"
-    if parsed.username:
-        auth = parsed.username
-        if parsed.password:
-            auth = f"{auth}:{parsed.password}"
-        netloc = f"{auth}@{netloc}"
-    return urlunparse(
-        (
-            parsed.scheme or "http",
-            netloc,
-            parsed.path or "",
-            parsed.params,
-            parsed.query,
-            parsed.fragment,
-        )
-    )
-
-
-def _resolve_gateway_url(preferred_url: str) -> str:
-    if _is_url_reachable(preferred_url):
-        return preferred_url
-    parsed = urlparse(preferred_url)
-    current_port = parsed.port
-    candidates: list[str] = []
-    for port in (8642, 18789):
-        if port != current_port:
-            candidates.append(_with_port(preferred_url, port))
-    for candidate in candidates:
-        if _is_url_reachable(candidate):
-            return candidate
-    return preferred_url
-
-
 def _disable_conflicting_gateway_handlers(this_module: str) -> None:
-    """关闭 hermes_bridge、clawdbot_bridge 及重复 runtime 的 handler，仅保留本插件。"""
+    """关闭其他桥接插件及重复 runtime 的 handler，仅保留本插件。"""
     for handler in list(star_handlers_registry):
         if handler.handler_name not in {"handle_message", "on_study_group_message"}:
             continue
@@ -178,80 +123,47 @@ def _disable_conflicting_gateway_handlers(this_module: str) -> None:
 @register(
     GATEWAY_UNIVERSAL_ID,
     "a4869",
-    "通用网关桥（hermes / openclaw），内置运行时，单配置文件可选 L1",
+    "Hermes 网关桥接，支持 profile 与按用户隔离会话",
     "1.0.0",
 )
 class GatewayUniversalBridge(_BaseBridge):
-    """gateway_backend=hermes 时对齐 hermes_bridge；openclaw 时对齐 clawdbot_bridge。"""
+    """仅通过 /h 命令调用 Hermes，不在插件加载阶段探测网关。"""
 
     def __init__(self, context: Context, config: dict | None = None):
         cfg: dict[str, Any] = {str(k): _unwrap(v) for k, v in dict(config or {}).items()}
-        raw_backend = str(_unwrap(cfg.get("gateway_backend")) or "hermes").strip().lower()
-        if raw_backend not in ("hermes", "openclaw"):
-            raw_backend = "hermes"
-        self._gateway_backend = raw_backend
-        mapping = "hermes_bridge" if raw_backend == "hermes" else "clawdbot_bridge"
+        self._gateway_backend = "hermes"
+
+        profiles = _unwrap(cfg.get("profiles"))
+        active_profile = str(_unwrap(cfg.get("active_profile")) or "default").strip()
+        if isinstance(profiles, dict):
+            selected = profiles.get(active_profile) or profiles.get("default")
+            if isinstance(selected, dict):
+                cfg.update({str(k): _unwrap(v) for k, v in selected.items()})
+        cfg.pop("gateway_backend", None)
 
         if not cfg.get("_gateway_l1_merge_applied"):
             cfg = merge_gateway_l1_into_l2(
                 cfg,
                 unified_file=_unified_gateway_bridges_path(cfg),
                 registry_plugin_id=GATEWAY_UNIVERSAL_ID,
-                mapping_plugin_id=mapping,
+                mapping_plugin_id="hermes_bridge",
             )
             cfg["_gateway_l1_merge_applied"] = True
 
-        if raw_backend == "hermes":
-            hermes_gateway_url = (
-                _unwrap(cfg.get("hermes_gateway_url"))
-                or _unwrap(cfg.get("clawdbot_gateway_url"))
-                or "http://host.docker.internal:18789"
-            )
-            hermes_agent_id = _unwrap(cfg.get("hermes_agent_id"))
-            hermes_backup_agent_id = _unwrap(cfg.get("hermes_backup_agent_id"))
-            hermes_gateway_auth_token = _unwrap(cfg.get("hermes_gateway_auth_token"))
-            if isinstance(hermes_gateway_auth_token, str):
-                hermes_gateway_auth_token = hermes_gateway_auth_token.strip()
-            else:
-                hermes_gateway_auth_token = hermes_gateway_auth_token or ""
-            if not hermes_gateway_auth_token:
-                hermes_gateway_auth_token = (
-                    os.environ.get("HERMES_GATEWAY_AUTH_TOKEN", "").strip()
-                    or os.environ.get("API_SERVER_KEY", "").strip()
-                )
-            gateway_send_hermes_headers = _unwrap(cfg.get("gateway_send_hermes_headers"))
-            resolved_url = _resolve_gateway_url(str(hermes_gateway_url))
-            _set_cfg(cfg, "clawdbot_gateway_url", resolved_url)
-            _set_cfg(cfg, "hermes_gateway_url", resolved_url)
-            if hermes_agent_id:
-                _set_cfg(cfg, "clawdbot_agent_id", hermes_agent_id)
-            if hermes_backup_agent_id:
-                _set_cfg(cfg, "clawdbot_backup_agent_id", hermes_backup_agent_id)
-            if hermes_gateway_auth_token:
-                _set_cfg(cfg, "gateway_auth_token", str(hermes_gateway_auth_token).strip())
-            if gateway_send_hermes_headers is not None:
-                _set_cfg(
-                    cfg,
-                    "gateway_send_openclaw_headers",
-                    bool(gateway_send_hermes_headers),
-                )
-            if not _unwrap(cfg.get("gateway_model_template")):
-                _set_cfg(cfg, "gateway_model_template", "hermes:{agent_id}")
-        else:
-            if not _unwrap(cfg.get("gateway_model_template")):
-                _set_cfg(cfg, "gateway_model_template", "openclaw:{agent_id}")
-            tok = _unwrap(cfg.get("gateway_auth_token"))
-            if not (isinstance(tok, str) and tok.strip()):
-                env_t = (
-                    os.environ.get("HERMES_GATEWAY_AUTH_TOKEN", "").strip()
-                    or os.environ.get("API_SERVER_KEY", "").strip()
-                )
-                if env_t:
-                    _set_cfg(cfg, "gateway_auth_token", env_t)
+        hermes_gateway_url = _unwrap(cfg.get("hermes_gateway_url")) or "http://host.docker.internal:8642"
+        hermes_agent_id = _unwrap(cfg.get("hermes_agent_id")) or "default"
+        hermes_gateway_auth_token = str(_unwrap(cfg.get("hermes_gateway_auth_token")) or "").strip()
+        if not hermes_gateway_auth_token:
+            hermes_gateway_auth_token = os.environ.get("HERMES_GATEWAY_AUTH_TOKEN", "").strip() or os.environ.get("API_SERVER_KEY", "").strip()
+        _set_cfg(cfg, "clawdbot_gateway_url", str(hermes_gateway_url))
+        _set_cfg(cfg, "clawdbot_agent_id", str(hermes_agent_id))
+        _set_cfg(cfg, "gateway_auth_token", hermes_gateway_auth_token)
+        _set_cfg(cfg, "gateway_model_template", "hermes:{agent_id}")
+        _set_cfg(cfg, "gateway_send_openclaw_headers", True)
 
         super().__init__(context, cfg)
 
-        if raw_backend == "hermes":
+        if _ResponsesGatewayClient is not None:
             _tok = str(
                 _unwrap(cfg.get("hermes_gateway_auth_token"))
                 or _unwrap(cfg.get("gateway_auth_token"))
@@ -262,27 +174,17 @@ class GatewayUniversalBridge(_BaseBridge):
                     os.environ.get("HERMES_GATEWAY_AUTH_TOKEN", "").strip()
                     or os.environ.get("API_SERVER_KEY", "").strip()
                 )
-            if _tok:
-                self.gateway_auth_token = _tok
-                _mt = self._get_config("gateway_model_template", "hermes:{agent_id}")
-                _send_h = bool(self._get_config("gateway_send_openclaw_headers", True))
-                if _ResponsesGatewayClient is not None:
-                    self.client = _ResponsesGatewayClient(
-                        gateway_url=self.gateway_url,
-                        agent_id=self.agent_id,
-                        auth_token=_tok,
-                        timeout=int(self.timeout),
-                        model_template=str(_mt or "hermes:{agent_id}"),
-                        send_openclaw_headers=_send_h,
-                        log_prefix="[gateway_universal]",
-                    )
-                else:
-                    self.client = _bridge_mod.OpenClawClient(
-                        gateway_url=self.gateway_url,
-                        agent_id=self.agent_id,
-                        auth_token=_tok,
-                        timeout=int(self.timeout),
-                    )
+            self.gateway_auth_token = _tok
+            _mt = self._get_config("gateway_model_template", "hermes:{agent_id}")
+            self.client = _ResponsesGatewayClient(
+                gateway_url=self.gateway_url,
+                agent_id=self.agent_id,
+                auth_token=_tok,
+                timeout=int(self.timeout),
+                model_template=str(_mt or "hermes:{agent_id}"),
+                send_gateway_headers=True,
+                log_prefix="[gateway_universal]",
+            )
 
             admin_id_cfg = _unwrap(cfg.get("admin_qq_id"))
             admin_ids_cfg = _unwrap(cfg.get("admin_qq_ids"))
@@ -302,26 +204,9 @@ class GatewayUniversalBridge(_BaseBridge):
                 self.admin_qq_ids = list(self._forced_admin_ids)
                 self.admin_qq_id = self._forced_admin_ids[0]
 
-            sw = self.command_handler.switch_commands
-            if not isinstance(sw, list) or not sw:
-                sw = ["/gateway", "/hermes", "/管理", "/clawdbot"]
-            else:
-                sw = list(sw)
-                bases = {str(c).lstrip("/").lower() for c in sw}
-                if "gateway" not in bases and "hermes" not in bases:
-                    sw.insert(0, "/gateway")
-            ex = self.command_handler.exit_commands
-            if not isinstance(ex, list) or not ex:
-                ex = list(
-                    getattr(
-                        _bridge_mod,
-                        "DEFAULT_EXIT_COMMANDS",
-                        ["/exit", "/退出", "/返回"],
-                    )
-                )
             self.command_handler = _bridge_mod.CommandHandler(
-                switch_commands=sw,
-                exit_commands=ex,
+                switch_commands=["/h"],
+                exit_commands=[],
             )
 
         _disable_conflicting_gateway_handlers(__name__)
@@ -411,70 +296,41 @@ class GatewayUniversalBridge(_BaseBridge):
             return sender_id in self._forced_admin_ids
         return super()._is_admin(event)
 
-    if hasattr(_BaseBridge, "_process_openclaw_message"):
-
-        async def _process_openclaw_message(
-            self, event, session_id, session_key, message, is_study_group
-        ):
-            if self._gateway_backend != "hermes":
-                async for resp in super()._process_openclaw_message(
-                    event, session_id, session_key, message, is_study_group
-                ):
-                    yield resp
-                return
-            async for resp in super()._process_openclaw_message(
-                event, session_id, session_key, message, is_study_group
-            ):
-                yield self._brand_message_result(resp)
+    @staticmethod
+    def _extract_h_message(event) -> str | None:
+        raw = str(getattr(event, "message_str", "") or "").strip()
+        if not raw.startswith("/h"):
+            return None
+        if len(raw) > 2 and not raw[2].isspace():
+            return None
+        text = raw[2:].strip()
+        parts = []
+        components = getattr(getattr(event, "message_obj", None), "message", None) or []
+        for component in components:
+            for attr in ("url", "file", "path"):
+                value = getattr(component, attr, None)
+                if value:
+                    parts.append(str(value))
+                    break
+        if parts:
+            text = f"{text}\n" if text else ""
+            text += "\n".join(f"[media] {item}" for item in parts)
+        return text or None
 
     @_Filter.event_message_type(_EventMessageType.ALL, priority=_MAX_PRIORITY)
     async def handle_message(self, event, *args, **kwargs):
-        result = _BaseBridge.handle_message(self, event, *args, **kwargs)
-        if self._gateway_backend != "hermes":
-            if inspect.isasyncgen(result):
-                async for resp in result:
-                    yield resp
-                return
-            if inspect.isawaitable(result):
-                awaited = await result
-                if awaited is not None:
-                    yield awaited
-                return
+        message = self._extract_h_message(event)
+        if message is None:
             return
-        if inspect.isasyncgen(result):
-            async for resp in result:
-                yield self._brand_message_result(resp)
+        if not self._is_admin(event):
             return
-        if inspect.isawaitable(result):
-            awaited = await result
-            if awaited is not None:
-                yield self._brand_message_result(awaited)
-            return
-
-    if hasattr(_BaseBridge, "on_study_group_message"):
-
-        @_Filter.event_message_type(
-            _EventMessageType.GROUP_MESSAGE, priority=_MAX_PRIORITY - 1
+        self._stop_event(event)
+        session_key = self.session_manager.get_gateway_session_key(
+            event, self.default_session
         )
-        async def on_study_group_message(self, event, *args, **kwargs):
-            result = _BaseBridge.on_study_group_message(self, event, *args, **kwargs)
-            if self._gateway_backend != "hermes":
-                if inspect.isasyncgen(result):
-                    async for resp in result:
-                        yield resp
-                    return
-                if inspect.isawaitable(result):
-                    awaited = await result
-                    if awaited is not None:
-                        yield awaited
-                    return
-                return
-            if inspect.isasyncgen(result):
-                async for resp in result:
-                    yield self._brand_message_result(resp)
-                return
-            if inspect.isawaitable(result):
-                awaited = await result
-                if awaited is not None:
-                    yield self._brand_message_result(awaited)
-                return
+        logger.info("[gateway_universal] /h -> session=%s", session_key)
+        response = await self.client.send_message(message, session_key)
+        async for result in self._send_response(
+            event, response or "✅ Hermes 已处理，但未返回文本。", False
+        ):
+            yield self._brand_message_result(result)

@@ -1,5 +1,5 @@
 """
-与 OpenResponses 兼容的 Gateway HTTP 客户端（通用，不限定 OpenClaw / Hermes 品牌）。
+与 OpenResponses 兼容的 Hermes Gateway HTTP 客户端。
 """
 
 from __future__ import annotations
@@ -26,8 +26,8 @@ class ResponsesGatewayClient:
         auth_token: str = "",
         timeout: int = 300,
         *,
-        model_template: str = "openclaw:{agent_id}",
-        send_openclaw_headers: bool = True,
+        model_template: str = "hermes:{agent_id}",
+        send_gateway_headers: bool = True,
         responses_path: str = "/v1/responses",
         log_prefix: str = "[gateway]",
     ) -> None:
@@ -36,7 +36,7 @@ class ResponsesGatewayClient:
         self.auth_token = auth_token
         self.timeout = timeout
         self.model_template = model_template
-        self.send_openclaw_headers = send_openclaw_headers
+        self.send_gateway_headers = send_gateway_headers
         self.responses_path = responses_path if responses_path.startswith("/") else f"/{responses_path}"
         self.log_prefix = log_prefix
         self.parser = ResponseParser()
@@ -50,7 +50,7 @@ class ResponsesGatewayClient:
 
     def _build_headers(self, session_key: str) -> dict[str, str]:
         headers: dict[str, str] = {"Content-Type": "application/json"}
-        if self.send_openclaw_headers:
+        if self.send_gateway_headers:
             headers["x-openclaw-agent-id"] = self.agent_id
             headers["x-openclaw-session-key"] = session_key
         if self.auth_token:
@@ -89,7 +89,11 @@ class ResponsesGatewayClient:
                     url,
                     json=payload,
                     headers=headers,
-                    timeout=aiohttp.ClientTimeout(total=self.timeout),
+                        # Hermes 长任务会持续发送 working SSE 事件；限制单次空闲读取，
+                        # 不限制整个响应生命周期，否则 total=300 会误杀长任务。
+                        timeout=aiohttp.ClientTimeout(
+                            total=None, connect=min(self.timeout, 30), sock_read=self.timeout
+                        ),
                 ) as response:
                     return await self._handle_response(response)
 
