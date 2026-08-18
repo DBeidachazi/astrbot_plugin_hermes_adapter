@@ -296,11 +296,12 @@ class GatewayUniversalBridge(_BaseBridge):
     @staticmethod
     def _extract_h_message(event) -> str | None:
         raw = str(getattr(event, "message_str", "") or "").strip()
-        if not raw.startswith("/h"):
+        command = "/h" if raw.startswith("/h") else "h" if raw.startswith("h") else ""
+        if not command:
             return None
-        if len(raw) > 2 and not raw[2].isspace():
+        if len(raw) > len(command) and not raw[len(command)].isspace():
             return None
-        text = raw[2:].strip()
+        text = raw[len(command) :].strip()
         parts = []
         components = getattr(getattr(event, "message_obj", None), "message", None) or []
         for component in components:
@@ -316,6 +317,7 @@ class GatewayUniversalBridge(_BaseBridge):
 
     @_Filter.event_message_type(_EventMessageType.ALL, priority=_MAX_PRIORITY)
     async def handle_message(self, event, *args, **kwargs):
+        logger.info("[gateway_universal] 收到事件: %r", getattr(event, "message_str", ""))
         message = self._extract_h_message(event)
         if message is None:
             return
