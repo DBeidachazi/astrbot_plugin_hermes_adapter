@@ -5,9 +5,31 @@
     "default": "default"
   },
   "profiles": {
-    "type": "string",
-    "description": "profile JSON，例如 {\"default\":{\"hermes_gateway_url\":\"http://hermes:8642\",\"hermes_agent_id\":\"default\"}}",
-    "default": "{}"
+    "type": "list",
+    "description": "Hermes profile 列表；选择 active_profile 后使用对应连接",
+    "items": {
+      "name": {
+        "type": "string",
+        "description": "profile 名称",
+        "default": "default"
+      },
+      "hermes_gateway_url": {
+        "type": "string",
+        "description": "该 profile 的 Hermes 网关地址",
+        "default": "http://host.docker.internal:8642"
+      },
+      "hermes_agent_id": {
+        "type": "string",
+        "description": "该 profile 的 Agent ID",
+        "default": "default"
+      },
+      "hermes_gateway_auth_token": {
+        "type": "string",
+        "description": "该 profile 的网关访问密钥",
+        "default": ""
+      }
+    },
+    "default": []
   },
   "hermes_gateway_url": {
     "type": "string",
@@ -32,9 +54,7 @@
   "admin_qq_ids": {
     "type": "list",
     "description": "允许使用 /h 的管理员 QQ 列表",
-    "items": {
-      "type": "string"
-    },
+    "items": { "type": "string" },
     "default": []
   },
   "admin_qq_id": {

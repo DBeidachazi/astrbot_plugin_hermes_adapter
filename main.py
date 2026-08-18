@@ -140,6 +140,12 @@ class GatewayUniversalBridge(_BaseBridge):
                 profiles = json.loads(profiles)
             except (TypeError, ValueError):
                 profiles = None
+        if isinstance(profiles, list):
+            profiles = {
+                str(item.get("name")): item
+                for item in profiles
+                if isinstance(item, dict) and str(item.get("name", "")).strip()
+            }
         active_profile = str(_unwrap(cfg.get("active_profile")) or "default").strip()
         if isinstance(profiles, dict):
             selected = profiles.get(active_profile) or profiles.get("default")
