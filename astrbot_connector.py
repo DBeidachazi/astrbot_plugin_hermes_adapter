@@ -15,7 +15,14 @@ import uuid
 
 import aiohttp
 
-from .bridge_protocol import CHUNK_SIZE, PROTOCOL_VERSION, build_websocket_url, safe_filename, sha256_path
+from .bridge_protocol import (
+    CHUNK_SIZE,
+    PROTOCOL_VERSION,
+    build_websocket_url,
+    resolve_delivery_temp_dir,
+    safe_filename,
+    sha256_path,
+)
 
 
 logger = logging.getLogger(__name__)
@@ -291,12 +298,25 @@ class AstrBotConnector:
         if frame_type == "activity":
             self._refresh_idle(str(payload.get("chat_id") or ""))
             return
+        if frame_type in {"turn.finish", "turn.completed", "turn.done"}:
+            chat_id = str(payload.get("chat_id") or "")
+            self._cancel_idle(chat_id)
+            status = str(payload.get("status") or "")
+            error = payload.get("error")
+            if status in {"error", "failure"} and error:
+                logger.warning("[gateway_universal] Hermes turn 异常结束: %s", error)
+            return
         if frame_type in {"delivery.text", "delivery.remote"}:
             await self._deliver(payload, None)
             return
         if frame_type == "delivery.start":
             self._cleanup_incoming()
-            temp = tempfile.NamedTemporaryFile(prefix="hermes_out_", delete=False)
+            temp_dir = resolve_delivery_temp_dir()
+            temp = tempfile.NamedTemporaryFile(
+                dir=str(temp_dir),
+                prefix="hermes_out_",
+                delete=False,
+            )
             self._incoming = _IncomingDelivery(
                 payload=payload,
                 path=Path(temp.name),
@@ -404,3 +424,5 @@ class AstrBotConnector:
             incoming.path.unlink(missing_ok=True)
         except OSError:
             pass
+
+

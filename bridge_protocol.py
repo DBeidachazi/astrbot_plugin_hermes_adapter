@@ -52,6 +52,33 @@ def sha256_path(path: str | Path) -> str:
     return digest.hexdigest()
 
 
+def resolve_delivery_temp_dir() -> Path:
+    """Resolve a directory for receiving incoming media attachments.
+
+    Prefer `/AstrBot/data/temp` (shared Docker volume with NapCat) so
+    NapCat can read the file directly when uploading to QQ.
+    """
+    import tempfile
+    import uuid
+
+    candidates = [
+        Path("/AstrBot/data/temp"),
+        Path("/AstrBot/data/cache"),
+        Path(tempfile.gettempdir()),
+    ]
+    for candidate in candidates:
+        try:
+            candidate.mkdir(parents=True, exist_ok=True)
+            test_file = candidate / f".probe_{uuid.uuid4().hex}"
+            test_file.touch()
+            test_file.unlink()
+            return candidate
+        except Exception:
+            continue
+    return Path(tempfile.gettempdir())
+
+
 def _identity_part(value: str) -> str:
     text = str(value or "unknown").strip()
     return text.replace(":", "_").replace("/", "_") or "unknown"
+

@@ -5,6 +5,7 @@ import unittest
 from astrbot_plugin_gateway_universal.bridge_protocol import (
     build_chat_id,
     build_websocket_url,
+    resolve_delivery_temp_dir,
     safe_filename,
 )
 
@@ -37,6 +38,12 @@ class BridgeProtocolTest(unittest.TestCase):
     def test_filename_drops_paths_and_unsafe_characters(self):
         self.assertEqual(safe_filename("../bad:name.txt"), "bad_name.txt")
 
+    def test_resolve_delivery_temp_dir(self):
+        temp_dir = resolve_delivery_temp_dir()
+        self.assertTrue(temp_dir.exists())
+        self.assertTrue(temp_dir.is_dir())
+
 
 if __name__ == "__main__":
     unittest.main()
+

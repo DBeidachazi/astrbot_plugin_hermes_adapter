@@ -98,6 +98,25 @@ class AstrBotAdapter(BasePlatformAdapter):
     def name(self) -> str:
         return "AstrBot"
 
+    @property
+    def authorization_is_upstream(self) -> bool:
+        """Inbound messages are authenticated via token and authorized by AstrBot."""
+        return True
+
+    @property
+    def enforces_own_access_policy(self) -> bool:
+        """AstrBot plugin restricts commands to AstrBot administrators."""
+        return True
+
+    async def on_processing_complete(self, event: MessageEvent, outcome: Any) -> None:
+        """Signal turn completion to the AstrBot connector to cancel idle watchers."""
+        await super().on_processing_complete(event, outcome)
+        chat_id = getattr(event.source, "chat_id", None)
+        turn_id = getattr(event, "message_id", None)
+        if chat_id:
+            outcome_val = outcome.value if hasattr(outcome, "value") else str(outcome)
+            await self._send_turn_finished(turn_id or "", chat_id, status=outcome_val)
+
     async def connect(self, *, is_reconnect: bool = False) -> bool:
         if not self.token:
             self._set_fatal_error(
@@ -253,6 +272,7 @@ class AstrBotAdapter(BasePlatformAdapter):
         return turn
 
     async def _dispatch_turn(self, turn: _IncomingTurn) -> None:
+        chat_id = str(turn.payload.get("chat_id") or "")
         try:
             media_urls: list[str] = []
             media_types: list[str] = []
@@ -271,7 +291,6 @@ class AstrBotAdapter(BasePlatformAdapter):
                     media_urls.append(cached.path)
                     media_types.append(cached.media_type)
 
-            chat_id = str(turn.payload.get("chat_id") or "")
             chat_type = str(turn.payload.get("chat_type") or "dm")
             user_id = str(turn.payload.get("user_id") or "unknown")
             user_name = str(turn.payload.get("user_name") or user_id)
@@ -301,10 +320,36 @@ class AstrBotAdapter(BasePlatformAdapter):
             await self.handle_message(event)
         except asyncio.CancelledError:
             raise
-        except Exception:
+        except Exception as exc:
             logger.exception("AstrBot inbound turn failed: %s", turn.turn_id)
+            if chat_id:
+                await self._send_turn_finished(turn.turn_id, chat_id, status="error", error=str(exc))
         finally:
             self._cleanup_turn(turn)
+
+    async def _send_turn_finished(
+        self,
+        turn_id: str,
+        chat_id: str,
+        *,
+        status: str = "completed",
+        error: Optional[str] = None,
+    ) -> None:
+        ws = self._ws
+        if ws is None or ws.closed:
+            return
+        try:
+            payload = {
+                "type": "turn.finish",
+                "turn_id": turn_id,
+                "chat_id": chat_id,
+                "status": status,
+            }
+            if error:
+                payload["error"] = error
+            await ws.send_json(payload)
+        except Exception:
+            logger.debug("AstrBot turn.finish delivery failed", exc_info=True)
 
     def _cleanup_turn(self, turn: Optional[_IncomingTurn]) -> None:
         if turn is None:
