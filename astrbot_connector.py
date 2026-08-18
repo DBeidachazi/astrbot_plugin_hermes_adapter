@@ -62,13 +62,11 @@ class AstrBotConnector:
         gateway_url: str,
         profile: str,
         token: str,
-        idle_timeout: int,
         delivery_handler: DeliveryHandler,
     ) -> None:
         self.ws_url = build_websocket_url(gateway_url, profile)
         self.profile = profile
         self.token = token
-        self.idle_timeout = max(0, int(idle_timeout))
         self.delivery_handler = delivery_handler
         self._session: Optional[aiohttp.ClientSession] = None
         self._ws: Optional[aiohttp.ClientWebSocketResponse] = None
@@ -79,9 +77,7 @@ class AstrBotConnector:
         self._ready = asyncio.Event()
         self._accepted: dict[str, asyncio.Future] = {}
         self._routes: dict[str, DeliveryRoute] = {}
-        self._active_turns: dict[str, set[str]] = {}
         self._incoming: Optional[_IncomingDelivery] = None
-        self._idle_tasks: dict[str, asyncio.Task] = {}
         self._closed = False
 
     @property
@@ -187,9 +183,6 @@ class AstrBotConnector:
                     await self._ws.send_json({"type": "blob.end", "blob_id": blob_id})
                 await self._ws.send_json({"type": "turn.commit", "turn_id": turn_id})
         await asyncio.wait_for(future, timeout=15)
-        self._active_turns.setdefault(chat_id, set()).add(turn_id)
-        if self.idle_timeout > 0:
-            self._refresh_idle(chat_id)
         return turn_id
         finally:
             self._accepted.pop(turn_id, None)
@@ -200,9 +193,6 @@ class AstrBotConnector:
             self._supervisor_task.cancel()
             await asyncio.gather(self._supervisor_task, return_exceptions=True)
             self._supervisor_task = None
-        for task in self._idle_tasks.values():
-            task.cancel()
-        self._idle_tasks.clear()
         await self._close_transport()
 
     async def _supervise_connection(self) -> None:
@@ -299,14 +289,8 @@ class AstrBotConnector:
                 future.set_result(payload)
             return
         if frame_type == "activity":
-            chat_id = str(payload.get("chat_id") or "")
-            if self._active_turns.get(chat_id):
-                self._refresh_idle(chat_id)
             return
         if frame_type in {"turn.finish", "turn.completed", "turn.done"}:
-            chat_id = str(payload.get("chat_id") or "")
-            self._cancel_idle(chat_id)
-            self._active_turns.pop(chat_id, None)
             status = str(payload.get("status") or "")
             error = payload.get("error")
             if status in {"error", "failure"} and error:
@@ -355,8 +339,6 @@ class AstrBotConnector:
         if route is None:
             await self._ack(payload, False, error="unknown AstrBot chat route")
             return
-        self._cancel_idle(chat_id)
-        self._active_turns.pop(chat_id, None)
         try:
             message_id = await self.delivery_handler(payload, path, route)
         except Exception as exc:
@@ -385,39 +367,6 @@ class AstrBotConnector:
                 "error": error,
             }
         )
-
-    def _refresh_idle(self, chat_id: str) -> None:
-        if not chat_id or self.idle_timeout <= 0:
-            return
-        self._cancel_idle(chat_id)
-        self._idle_tasks[chat_id] = asyncio.create_task(self._idle_watch(chat_id))
-
-    def _cancel_idle(self, chat_id: str) -> None:
-        task = self._idle_tasks.pop(chat_id, None)
-        if task is not None:
-            task.cancel()
-
-    async def _idle_watch(self, chat_id: str) -> None:
-        try:
-            await asyncio.sleep(self.idle_timeout)
-            if not self._active_turns.get(chat_id):
-                return
-            route = self._routes.get(chat_id)
-            if route is None:
-                return
-            await self.delivery_handler(
-                {
-                    "type": "delivery.text",
-                    "chat_id": chat_id,
-                    "text": f"Hermes 已连续 {self.idle_timeout} 秒没有返回活动，任务可能仍在后台运行。",
-                },
-                None,
-                route,
-            )
-        except asyncio.CancelledError:
-            return
-        finally:
-            self._idle_tasks.pop(chat_id, None)
 
     def _cleanup_incoming(self) -> None:
         incoming = self._incoming

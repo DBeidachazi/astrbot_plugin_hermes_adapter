@@ -14,11 +14,6 @@
     "description": "平台适配器访问密钥",
     "default": ""
   },
-  "timeout": {
-    "type": "int",
-    "description": "任务无活动超时（秒）；working 消息会刷新计时",
-    "default": 300
-  },
   "admin_qq_ids": {
     "type": "list",
     "description": "允许使用 /h 的管理员 QQ 列表",

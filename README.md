@@ -42,7 +42,6 @@ Hermes 日志出现 `AstrBot adapter listening` 即表示平台端已启动。�
 | `hermes_profile` | Hermes profile 名称 |
 | `hermes_gateway_url` | 适配器地址，例如 `http://hermes:8643` |
 | `hermes_gateway_auth_token` | 与 `ASTRBOT_BRIDGE_TOKEN` 相同的密钥 |
-| `timeout` | 无 working、typing 或响应时的空闲超时 |
 | `admin_qq_ids` | 可以使用 `/h` 的 QQ 列表 |
 | `admin_qq_id` | 旧版单管理员配置，保留兼容 |
 
@@ -56,4 +55,4 @@ Hermes 日志出现 `AstrBot adapter listening` 即表示平台端已启动。�
 
 可以在同一条消息附带图片、文件、语音或视频，也可以引用含有附件的 QQ 消息再发送 `/h`。
 
-私聊按 QQ 用户隔离；群聊按群号隔离，同一个群共用一个 Hermes 会话。`working` 活动会刷新 `timeout`，不会因任务总耗时超过该值而中断。
+私聊按 QQ 用户隔离；群聊按群号隔离，同一个群共用一个 Hermes 会话。

@@ -40,13 +40,11 @@ class GatewayUniversalBridge(Star):
             or "http://host.docker.internal:8643"
         ).strip()
         token = str(self._cfg("hermes_gateway_auth_token", "") or "").strip()
-        timeout = int(self._cfg("timeout", 300) or 300)
         self._admin_ids = self._load_admin_ids()
         self.connector = AstrBotConnector(
             gateway_url=gateway_url,
             profile=profile,
             token=token,
-            idle_timeout=timeout,
             delivery_handler=self._deliver_from_hermes,
         )
         logger.info(
