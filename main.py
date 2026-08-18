@@ -11,7 +11,6 @@ from __future__ import annotations
 
 import importlib.util
 import inspect
-import json
 import os
 from pathlib import Path
 import sys
@@ -134,23 +133,7 @@ class GatewayUniversalBridge(_BaseBridge):
         cfg: dict[str, Any] = {str(k): _unwrap(v) for k, v in dict(config or {}).items()}
         self._gateway_backend = "hermes"
 
-        profiles = _unwrap(cfg.get("profiles"))
-        if isinstance(profiles, str):
-            try:
-                profiles = json.loads(profiles)
-            except (TypeError, ValueError):
-                profiles = None
-        if isinstance(profiles, list):
-            profiles = {
-                str(item.get("name")): item
-                for item in profiles
-                if isinstance(item, dict) and str(item.get("name", "")).strip()
-            }
-        active_profile = str(_unwrap(cfg.get("active_profile")) or "default").strip()
-        if isinstance(profiles, dict):
-            selected = profiles.get(active_profile) or profiles.get("default")
-            if isinstance(selected, dict):
-                cfg.update({str(k): _unwrap(v) for k, v in selected.items()})
+        hermes_profile = str(_unwrap(cfg.get("hermes_profile")) or "default").strip()
         cfg.pop("gateway_backend", None)
 
         if not cfg.get("_gateway_l1_merge_applied"):
@@ -163,7 +146,9 @@ class GatewayUniversalBridge(_BaseBridge):
             cfg["_gateway_l1_merge_applied"] = True
 
         hermes_gateway_url = _unwrap(cfg.get("hermes_gateway_url")) or "http://host.docker.internal:8642"
-        hermes_agent_id = _unwrap(cfg.get("hermes_agent_id")) or "default"
+        # Hermes profile selects the server-side sub-configuration. The actual
+        # conversation identity is the QQ-derived session key sent as `user`.
+        hermes_agent_id = hermes_profile
         hermes_gateway_auth_token = str(_unwrap(cfg.get("hermes_gateway_auth_token")) or "").strip()
         if not hermes_gateway_auth_token:
             hermes_gateway_auth_token = os.environ.get("HERMES_GATEWAY_AUTH_TOKEN", "").strip() or os.environ.get("API_SERVER_KEY", "").strip()

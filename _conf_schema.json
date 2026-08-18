@@ -1,35 +1,8 @@
 {
-  "active_profile": {
+  "hermes_profile": {
     "type": "string",
-    "description": "当前使用的 Hermes profile 名称",
+    "description": "Hermes 内部 profile 名称，例如 default 或 xcq；QQ 会话隔离由插件自动处理",
     "default": "default"
-  },
-  "profiles": {
-    "type": "list",
-    "description": "Hermes profile 列表；选择 active_profile 后使用对应连接",
-    "items": {
-      "name": {
-        "type": "string",
-        "description": "profile 名称",
-        "default": "default"
-      },
-      "hermes_gateway_url": {
-        "type": "string",
-        "description": "该 profile 的 Hermes 网关地址",
-        "default": "http://host.docker.internal:8642"
-      },
-      "hermes_agent_id": {
-        "type": "string",
-        "description": "该 profile 的 Agent ID",
-        "default": "default"
-      },
-      "hermes_gateway_auth_token": {
-        "type": "string",
-        "description": "该 profile 的网关访问密钥",
-        "default": ""
-      }
-    },
-    "default": []
   },
   "hermes_gateway_url": {
     "type": "string",
