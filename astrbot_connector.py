@@ -182,8 +182,8 @@ class AstrBotConnector:
                             await self._ws.send_bytes(chunk)
                     await self._ws.send_json({"type": "blob.end", "blob_id": blob_id})
                 await self._ws.send_json({"type": "turn.commit", "turn_id": turn_id})
-        await asyncio.wait_for(future, timeout=15)
-        return turn_id
+            await asyncio.wait_for(future, timeout=15)
+            return turn_id
         finally:
             self._accepted.pop(turn_id, None)
 
