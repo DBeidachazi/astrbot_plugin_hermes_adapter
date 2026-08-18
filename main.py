@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import importlib.util
 import inspect
+import json
 import os
 from pathlib import Path
 import sys
@@ -134,6 +135,11 @@ class GatewayUniversalBridge(_BaseBridge):
         self._gateway_backend = "hermes"
 
         profiles = _unwrap(cfg.get("profiles"))
+        if isinstance(profiles, str):
+            try:
+                profiles = json.loads(profiles)
+            except (TypeError, ValueError):
+                profiles = None
         active_profile = str(_unwrap(cfg.get("active_profile")) or "default").strip()
         if isinstance(profiles, dict):
             selected = profiles.get(active_profile) or profiles.get("default")

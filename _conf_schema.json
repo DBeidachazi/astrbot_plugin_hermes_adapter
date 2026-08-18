@@ -5,15 +5,9 @@
     "default": "default"
   },
   "profiles": {
-    "type": "object",
-    "description": "按名称保存多套 Hermes 连接配置；每项可包含 hermes_gateway_url、hermes_agent_id、hermes_gateway_auth_token",
-    "default": {
-      "default": {
-        "hermes_gateway_url": "http://host.docker.internal:8642",
-        "hermes_agent_id": "default",
-        "hermes_gateway_auth_token": ""
-      }
-    }
+    "type": "string",
+    "description": "profile JSON，例如 {\"default\":{\"hermes_gateway_url\":\"http://hermes:8642\",\"hermes_agent_id\":\"default\"}}",
+    "default": "{}"
   },
   "hermes_gateway_url": {
     "type": "string",
@@ -38,6 +32,9 @@
   "admin_qq_ids": {
     "type": "list",
     "description": "允许使用 /h 的管理员 QQ 列表",
+    "items": {
+      "type": "string"
+    },
     "default": []
   },
   "admin_qq_id": {
