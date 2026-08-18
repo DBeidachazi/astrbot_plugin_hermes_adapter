@@ -41,6 +41,7 @@ class GatewayUniversalBridge(Star):
         ).strip()
         token = str(self._cfg("hermes_gateway_auth_token", "") or "").strip()
         self._admin_ids = self._load_admin_ids()
+        self._allowed_group_ids = self._load_group_ids()
         self.connector = AstrBotConnector(
             gateway_url=gateway_url,
             profile=profile,
@@ -75,12 +76,24 @@ class GatewayUniversalBridge(Star):
             result.add(legacy)
         return result
 
-    def _is_admin(self, event: AstrMessageEvent) -> bool:
+    def _load_group_ids(self) -> set[str]:
+        values = self._cfg("allowed_group_ids", [])
+        if not isinstance(values, list):
+            values = []
+        return {str(value).strip() for value in values if str(value).strip()}
+
+    def _is_allowed(self, event: AstrMessageEvent) -> bool:
+        group_id = str(event.get_group_id() or "").strip()
+        if group_id and group_id in self._allowed_group_ids:
+            return True
         sender_id = str(event.get_sender_id())
         if self._admin_ids:
             return sender_id in self._admin_ids
         global_admins = self.context.get_config().get("admins_id", [])
         return sender_id in {str(value) for value in global_admins} or "astrbot" in global_admins
+
+    def _is_admin(self, event: AstrMessageEvent) -> bool:
+        return self._is_allowed(event)
 
     @staticmethod
     def _command_text(event: AstrMessageEvent) -> Optional[str]:
@@ -102,7 +115,7 @@ class GatewayUniversalBridge(Star):
     @filter.event_message_type(EventMessageType.ALL, priority=sys.maxsize)
     async def handle_message(self, event: AstrMessageEvent, *args, **kwargs):
         text = self._command_text(event)
-        if text is None or not self._is_admin(event):
+        if text is None or not self._is_allowed(event):
             return
         self._stop_event(event)
 

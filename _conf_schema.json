@@ -20,6 +20,12 @@
     "items": { "type": "string" },
     "default": []
   },
+  "allowed_group_ids": {
+    "type": "list",
+    "description": "允许全员使用 /h 的 QQ 群号白名单（留空表示仅管理员可用）",
+    "items": { "type": "string" },
+    "default": []
+  },
   "admin_qq_id": {
     "type": "string",
     "description": "兼容单个管理员 QQ 配置",

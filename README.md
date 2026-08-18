@@ -42,7 +42,8 @@ Hermes 日志出现 `AstrBot adapter listening` 即表示平台端已启动。�
 | `hermes_profile` | Hermes profile 名称 |
 | `hermes_gateway_url` | 适配器地址，例如 `http://hermes:8643` |
 | `hermes_gateway_auth_token` | 与 `ASTRBOT_BRIDGE_TOKEN` 相同的密钥 |
-| `admin_qq_ids` | 可以使用 `/h` 的 QQ 列表 |
+| `admin_qq_ids` | 可以使用 `/h` 的管理员 QQ 列表 |
+| `allowed_group_ids` | 允许全员使用 `/h` 的 QQ 群号白名单（留空表示仅管理员可用） |
 | `admin_qq_id` | 旧版单管理员配置，保留兼容 |
 
 插件不会读取隐藏环境变量，也没有 Agent ID、backend 或 JSON profile 配置。
