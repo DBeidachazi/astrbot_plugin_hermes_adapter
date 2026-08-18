@@ -294,7 +294,7 @@ class GatewayUniversalBridge(_BaseBridge):
         return super()._is_admin(event)
 
     @staticmethod
-    def _extract_h_message(event) -> str | None:
+    def _extract_h_message(event) -> str | list[dict[str, Any]] | None:
         raw = str(getattr(event, "message_str", "") or "").strip()
         command = "/h" if raw.startswith("/h") else "h" if raw.startswith("h") else ""
         if not command:
@@ -302,18 +302,31 @@ class GatewayUniversalBridge(_BaseBridge):
         if len(raw) > len(command) and not raw[len(command)].isspace():
             return None
         text = raw[len(command) :].strip()
-        parts = []
+        media_parts: list[dict[str, Any]] = []
         components = getattr(getattr(event, "message_obj", None), "message", None) or []
         for component in components:
+            component_name = type(component).__name__.lower()
+            media_url = None
             for attr in ("url", "file", "path"):
                 value = getattr(component, attr, None)
                 if value:
-                    parts.append(str(value))
+                    media_url = str(value)
                     break
-        if parts:
-            text = f"{text}\n" if text else ""
-            text += "\n".join(f"[media] {item}" for item in parts)
-        return text or None
+            if not media_url:
+                continue
+            if "image" in component_name:
+                media_parts.append({"type": "input_image", "image_url": media_url})
+            elif any(kind in component_name for kind in ("file", "video", "record", "audio")):
+                media_parts.append({"type": "input_file", "file_url": media_url})
+            else:
+                media_parts.append({"type": "input_text", "text": f"[media] {media_url}"})
+        if not media_parts:
+            return text or None
+        content: list[dict[str, Any]] = []
+        if text:
+            content.append({"type": "input_text", "text": text})
+        content.extend(media_parts)
+        return content
 
     @_Filter.event_message_type(_EventMessageType.ALL, priority=_MAX_PRIORITY)
     async def handle_message(self, event, *args, **kwargs):

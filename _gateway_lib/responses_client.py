@@ -58,7 +58,7 @@ class ResponsesGatewayClient:
         return headers
 
     def _build_payload(
-        self, message: str, session_key: str, stream: bool = True
+        self, message: str | list[dict[str, Any]], session_key: str, stream: bool = True
     ) -> dict[str, Any]:
         return {
             "model": self._model_id(),
@@ -67,8 +67,10 @@ class ResponsesGatewayClient:
             "stream": stream,
         }
 
-    async def send_message(self, message: str, session_key: str) -> str | None:
-        if not message or not message.strip():
+    async def send_message(
+        self, message: str | list[dict[str, Any]], session_key: str
+    ) -> str | None:
+        if not message or (isinstance(message, str) and not message.strip()):
             logger.warning("%s 消息为空，拒绝发送", self.log_prefix)
             return "❌ 消息不能为空"
 
