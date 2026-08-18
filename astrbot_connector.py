@@ -68,7 +68,7 @@ class AstrBotConnector:
         self.ws_url = build_websocket_url(gateway_url, profile)
         self.profile = profile
         self.token = token
-        self.idle_timeout = max(10, int(idle_timeout))
+        self.idle_timeout = max(0, int(idle_timeout))
         self.delivery_handler = delivery_handler
         self._session: Optional[aiohttp.ClientSession] = None
         self._ws: Optional[aiohttp.ClientWebSocketResponse] = None
@@ -79,6 +79,7 @@ class AstrBotConnector:
         self._ready = asyncio.Event()
         self._accepted: dict[str, asyncio.Future] = {}
         self._routes: dict[str, DeliveryRoute] = {}
+        self._active_turns: dict[str, set[str]] = {}
         self._incoming: Optional[_IncomingDelivery] = None
         self._idle_tasks: dict[str, asyncio.Task] = {}
         self._closed = False
@@ -185,9 +186,11 @@ class AstrBotConnector:
                             await self._ws.send_bytes(chunk)
                     await self._ws.send_json({"type": "blob.end", "blob_id": blob_id})
                 await self._ws.send_json({"type": "turn.commit", "turn_id": turn_id})
-            await asyncio.wait_for(future, timeout=15)
+        await asyncio.wait_for(future, timeout=15)
+        self._active_turns.setdefault(chat_id, set()).add(turn_id)
+        if self.idle_timeout > 0:
             self._refresh_idle(chat_id)
-            return turn_id
+        return turn_id
         finally:
             self._accepted.pop(turn_id, None)
 
@@ -296,11 +299,14 @@ class AstrBotConnector:
                 future.set_result(payload)
             return
         if frame_type == "activity":
-            self._refresh_idle(str(payload.get("chat_id") or ""))
+            chat_id = str(payload.get("chat_id") or "")
+            if self._active_turns.get(chat_id):
+                self._refresh_idle(chat_id)
             return
         if frame_type in {"turn.finish", "turn.completed", "turn.done"}:
             chat_id = str(payload.get("chat_id") or "")
             self._cancel_idle(chat_id)
+            self._active_turns.pop(chat_id, None)
             status = str(payload.get("status") or "")
             error = payload.get("error")
             if status in {"error", "failure"} and error:
@@ -350,6 +356,7 @@ class AstrBotConnector:
             await self._ack(payload, False, error="unknown AstrBot chat route")
             return
         self._cancel_idle(chat_id)
+        self._active_turns.pop(chat_id, None)
         try:
             message_id = await self.delivery_handler(payload, path, route)
         except Exception as exc:
@@ -380,7 +387,7 @@ class AstrBotConnector:
         )
 
     def _refresh_idle(self, chat_id: str) -> None:
-        if not chat_id:
+        if not chat_id or self.idle_timeout <= 0:
             return
         self._cancel_idle(chat_id)
         self._idle_tasks[chat_id] = asyncio.create_task(self._idle_watch(chat_id))
@@ -393,6 +400,8 @@ class AstrBotConnector:
     async def _idle_watch(self, chat_id: str) -> None:
         try:
             await asyncio.sleep(self.idle_timeout)
+            if not self._active_turns.get(chat_id):
+                return
             route = self._routes.get(chat_id)
             if route is None:
                 return
