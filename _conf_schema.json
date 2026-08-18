@@ -9,14 +9,9 @@
     "description": "Hermes 网关地址（profile 未提供时使用）",
     "default": "http://host.docker.internal:8642"
   },
-  "hermes_agent_id": {
-    "type": "string",
-    "description": "目标 Agent ID",
-    "default": "default"
-  },
   "hermes_gateway_auth_token": {
     "type": "string",
-    "description": "网关访问密钥；留空时读取 HERMES_GATEWAY_AUTH_TOKEN 或 API_SERVER_KEY",
+    "description": "网关访问密钥；建议直接填写。留空仅在 AstrBot 进程已配置环境变量时生效",
     "default": ""
   },
   "timeout": {
