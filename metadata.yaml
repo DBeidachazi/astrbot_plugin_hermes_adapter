@@ -1,5 +1,5 @@
 name: astrbot_plugin_gateway_universal
 author: 4869-yinxu
-desc: Hermes 网关桥接：使用 /h 单命令，支持 profile 与按用户隔离会话
-version: 1.0.0
-repo: https://github.com/4869-yinxu/astrbot_plugin_clawdbot_bridge
+desc: Hermes 原生 AstrBot 平台适配器 Connector，支持 /h、会话隔离和媒体文件传输
+version: 2.0.0
+repo: https://github.com/DBeidachazi/astrbot_plugin_gateway_universal

@@ -1,0 +1,23 @@
+name: astrbot-platform
+label: AstrBot
+kind: platform
+version: 2.0.0
+description: AstrBot transport adapter with native text and attachment delivery.
+author: a4869
+optional_env:
+  - name: ASTRBOT_BRIDGE_HOST
+    description: Listen address for the AstrBot adapter transport
+    prompt: Listen address
+    password: false
+  - name: ASTRBOT_BRIDGE_PORT
+    description: Listen port for the AstrBot adapter transport
+    prompt: Listen port
+    password: false
+  - name: ASTRBOT_BRIDGE_TOKEN
+    description: Bearer token shared with the AstrBot plugin
+    prompt: Bridge token
+    password: true
+  - name: ASTRBOT_BRIDGE_MAX_FILE_BYTES
+    description: Maximum attachment size in bytes
+    prompt: Maximum attachment bytes
+    password: false

@@ -1,22 +1,22 @@
 {
   "hermes_profile": {
     "type": "string",
-    "description": "Hermes 内部 profile 名称，例如 default 或 xcq；QQ 会话隔离由插件自动处理",
+    "description": "Hermes profile 名称；QQ 会话由插件自动隔离",
     "default": "default"
   },
   "hermes_gateway_url": {
     "type": "string",
-    "description": "Hermes 网关地址（profile 未提供时使用）",
-    "default": "http://host.docker.internal:8642"
+    "description": "Hermes AstrBot 平台适配器地址",
+    "default": "http://host.docker.internal:8643"
   },
   "hermes_gateway_auth_token": {
     "type": "string",
-    "description": "网关访问密钥；建议直接填写。留空仅在 AstrBot 进程已配置环境变量时生效",
+    "description": "平台适配器访问密钥",
     "default": ""
   },
   "timeout": {
     "type": "int",
-    "description": "网关单次读取空闲超时（秒），建议 300；working 消息会刷新该计时",
+    "description": "任务无活动超时（秒）；working 消息会刷新计时",
     "default": 300
   },
   "admin_qq_ids": {

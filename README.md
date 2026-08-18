@@ -1,52 +1,59 @@
-# Hermes Gateway Universal
+# Hermes AstrBot 平台适配器
 
-给 AstrBot 使用 Hermes 网关的简易桥接插件。插件只处理 `/h` 命令，普通消息不会被拦截。
+这个项目包含两部分：
+
+- AstrBot 插件：接收 `/h`，读取 QQ 消息及引用消息。
+- Hermes 平台插件：把 AstrBot 注册为 Hermes 原生消息平台。
+
+文本、图片、文件、语音和视频通过适配器协议传输，不需要共享 Docker 目录，也不使用 `/v1/responses`。
+
+## 安装 Hermes 端
+
+把 `hermes_platform` 目录复制到所用 Hermes profile 的插件目录，目录名改为 `astrbot`：
+
+```text
+$HERMES_HOME/plugins/astrbot/
+  __init__.py
+  adapter.py
+  plugin.yaml
+```
+
+为该 profile 设置密钥和监听端口：
+
+```text
+ASTRBOT_BRIDGE_TOKEN=填写一个随机密钥
+ASTRBOT_BRIDGE_HOST=0.0.0.0
+ASTRBOT_BRIDGE_PORT=8643
+```
+
+启用插件并重启 Gateway：
+
+```bash
+hermes -p PROFILE plugins enable astrbot-platform
+hermes -p PROFILE gateway restart
+```
+
+Hermes 日志出现 `AstrBot adapter listening` 即表示平台端已启动。确保 AstrBot 容器能够访问该端口。
+
+## 配置 AstrBot
+
+| 配置 | 填写内容 |
+| --- | --- |
+| `hermes_profile` | Hermes profile 名称 |
+| `hermes_gateway_url` | 适配器地址，例如 `http://hermes:8643` |
+| `hermes_gateway_auth_token` | 与 `ASTRBOT_BRIDGE_TOKEN` 相同的密钥 |
+| `timeout` | 无 working、typing 或响应时的空闲超时 |
+| `admin_qq_ids` | 可以使用 `/h` 的 QQ 列表 |
+| `admin_qq_id` | 旧版单管理员配置，保留兼容 |
+
+插件不会读取隐藏环境变量，也没有 Agent ID、backend 或 JSON profile 配置。
 
 ## 使用
 
-1. 在 AstrBot 插件配置中填写管理员 QQ。
-2. `hermes_profile` 填 Hermes 已存在的 profile 名称。
-3. 填网关地址和访问密钥。
-4. 管理员发送：
-
 ```text
-/h 你好，请介绍一下你自己
+/h 你好
 ```
 
-## 配置
+可以在同一条消息附带图片、文件、语音或视频，也可以引用含有附件的 QQ 消息再发送 `/h`。
 
-| 配置 | 说明 |
-| --- | --- |
-| `hermes_profile` | Hermes 使用的 profile 名称 |
-| `hermes_gateway_url` | Hermes 网关地址，默认 `http://host.docker.internal:8642` |
-| `hermes_gateway_auth_token` | 网关访问密钥，建议直接填写；留空时读取 AstrBot 进程环境变量 `HERMES_GATEWAY_AUTH_TOKEN` 或 `API_SERVER_KEY` |
-| `timeout` | 单次读取空闲超时，建议 `300` 秒 |
-| `admin_qq_ids` | 可以使用 `/h` 的 QQ 列表 |
-| `admin_qq_id` | 单个管理员 QQ，兼容旧配置 |
-
-`profile` 是 Hermes 侧的配置选择，不是 Agent ID。插件不会要求填写 Agent ID；对话身份由 QQ 会话自动生成。
-
-## 会话隔离
-
-- 同一个群使用同一个会话。
-- 不同群互相隔离。
-- 每个私聊用户独立会话。
-- 会话标识由平台、用户和群号自动生成。
-
-## 超时说明
-
-`timeout` 是流式响应两次数据之间允许的最大空闲时间，不是整个任务的总时长。Hermes 发送 working 消息会刷新计时，因此长任务不会因为总耗时超过 300 秒而被插件主动终止。
-
-## 常见问题
-
-### 插件加载失败
-
-确认 AstrBot 已更新到 GitHub 仓库的最新版本，并删除旧插件目录后重新安装。
-
-### 401 认证失败
-
-检查 `hermes_gateway_auth_token` 是否与 Hermes 的网关访问密钥一致。上游模型密钥不应填写在这里。
-
-### 无法连接网关
-
-确认 AstrBot 容器可以访问 `hermes_gateway_url`，并确认 Hermes 容器正在运行。
+私聊按 QQ 用户隔离；群聊按群号隔离，同一个群共用一个 Hermes 会话。`working` 活动会刷新 `timeout`，不会因任务总耗时超过该值而中断。
